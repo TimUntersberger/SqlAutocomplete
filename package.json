@@ -18,6 +18,10 @@
             {
                 "command": "oracle-sql-autocomplete.setDb",
                 "title": "Oracle Sql AutoComplete: Set Database"
+            },
+            {
+                "command": "oracle-sql-autocomplete.executeQuery",
+                "title": "Oracle Sql AutoComplete: Execute Query"
             }
         ]
     },

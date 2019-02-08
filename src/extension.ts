@@ -2,9 +2,64 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from "vscode"
 import * as mysql from "mysql"
+import getSqlStatement from "./getSqlStatement"
+import parseSql from "./parseSql"
 
 const databases: any = {}
-let selectedDb = "db"
+let selectedDb = ""
+
+function createConnection() {
+    return mysql.createConnection({
+        host: "127.0.0.1",
+        user: "root",
+        password: "root"
+    })
+}
+
+function createSqlResultHtml(result, columnNames) {
+    return `
+    <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>SQL Result</title>
+            <style>
+                table {
+                    width: 100%;
+                    color: black;
+                }
+
+                th {
+                    text-align: left;
+                }
+            </style>
+        </head>
+        <body>
+            <table>
+                <tr>
+                ${columnNames.map(x => `<th>${x}</th>`).join("\n")}
+                </tr>
+                ${result
+                    .map(
+                        row => `
+                    <tr>
+                        ${columnNames
+                            .map(
+                                column => `
+                                <td>${row[column]}</td>
+                            `
+                            )
+                            .join("\n")}
+                    </tr>
+                `
+                    )
+                    .join("\n")}
+            </table>
+        </body>
+        </html>
+    `
+}
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
@@ -15,13 +70,13 @@ export function activate(context: vscode.ExtensionContext) {
         'Congratulations, your extension "oracle-sql-autocomplete" is now active!'
     )
 
-    const conn = mysql.createConnection({
-        host: "localhost",
-        user: "root",
-        password: "root"
-    })
+    getSqlStatement(
+        `select * from users;
+        select  from users;`,
+        new vscode.Position(1, 7)
+    )
 
-    conn.connect()
+    const conn = createConnection()
 
     const databasesToIgnore = [
         "information_schema",
@@ -36,23 +91,29 @@ export function activate(context: vscode.ExtensionContext) {
             .map(db => `columns.table_schema != '${db}'`)
             .join(" and ")};`
 
-    conn.query(sql, (err, result, fields) => {
-        for (const combination of result) {
-            if (databases[combination.TABLE_SCHEMA] == undefined) {
-                databases[combination.TABLE_SCHEMA] = {}
-                databases[combination.TABLE_SCHEMA].tables = {}
-            }
-            const db = databases[combination.TABLE_SCHEMA]
-            if (db.tables[combination.TABLE_NAME] == undefined) {
-                db.tables[combination.TABLE_NAME] = {}
-                db.tables[combination.TABLE_NAME].columns = {}
-            }
-            const table = db.tables[combination.TABLE_NAME]
-            if (table.columns[combination.COLUMN_NAME] == undefined) {
-                table.columns[combination.COLUMN_NAME] = {}
-            }
+    conn.connect(err => {
+        if (err) {
+            console.log(err)
+            return
         }
-        conn.end()
+        conn.query(sql, (err, result, fields) => {
+            for (const combination of result) {
+                if (databases[combination.TABLE_SCHEMA] == undefined) {
+                    databases[combination.TABLE_SCHEMA] = {}
+                    databases[combination.TABLE_SCHEMA].tables = {}
+                }
+                const db = databases[combination.TABLE_SCHEMA]
+                if (db.tables[combination.TABLE_NAME] == undefined) {
+                    db.tables[combination.TABLE_NAME] = {}
+                    db.tables[combination.TABLE_NAME].columns = {}
+                }
+                const table = db.tables[combination.TABLE_NAME]
+                if (table.columns[combination.COLUMN_NAME] == undefined) {
+                    table.columns[combination.COLUMN_NAME] = {}
+                }
+            }
+            conn.end()
+        })
     })
 
     const keywords = ["select", "from"]
@@ -65,22 +126,29 @@ export function activate(context: vscode.ExtensionContext) {
                 position: vscode.Position,
                 token: vscode.CancellationToken
             ) {
-                const tables = databases[selectedDb].tables
+                const sqlString = getSqlStatement(document.getText(), position)
+                const sql = parseSql(sqlString)
                 const completionItems: vscode.CompletionItem[] = []
 
-                Object.keys(tables).forEach(tableKey => {
-                    const table = tables[tableKey]
+                if (selectedDb != "") {
+                    const tables = databases[selectedDb].tables
 
-                    completionItems.push(new vscode.CompletionItem(tableKey))
+                    Object.keys(tables).forEach(tableKey => {
+                        const table = tables[tableKey]
 
-                    Object.keys(table.columns).forEach(columnKey => {
                         completionItems.push(
-                            new vscode.CompletionItem(
-                                `${tableKey}.${columnKey}`
-                            )
+                            new vscode.CompletionItem(tableKey)
                         )
+
+                        Object.keys(table.columns).forEach(columnKey => {
+                            completionItems.push(
+                                new vscode.CompletionItem(
+                                    `${tableKey}.${columnKey}`
+                                )
+                            )
+                        })
                     })
-                })
+                }
 
                 keywords.forEach(word =>
                     completionItems.push(new vscode.CompletionItem(word))
@@ -107,7 +175,61 @@ export function activate(context: vscode.ExtensionContext) {
         }
     )
 
+    /*TODO: 
+        somehow remove the requirement that you have to select the whole sql statement.
+        maybe just place the cursor inside the statement
+    */
+    const executeQuery = vscode.commands.registerCommand(
+        "oracle-sql-autocomplete.executeQuery",
+        (...args: any[]) => {
+            const activeEditor = vscode.window.activeTextEditor
+
+            if (activeEditor) {
+                const sql = getSqlStatement(
+                    activeEditor.document.getText(),
+                    activeEditor.selection.active
+                )
+
+                const conn = createConnection()
+                conn.connect(err => {
+                    if (err) {
+                        console.log(err)
+                        return
+                    }
+                    if (selectedDb == "") {
+                        vscode.window.showErrorMessage(
+                            "Please select a database before trying to execute a query"
+                        )
+                        return
+                    }
+                    conn.query("use " + selectedDb, () => {
+                        conn.query(sql, (err, result, fields = []) => {
+                            if (err) {
+                                console.log(err)
+                                return
+                            }
+                            const columnNames = fields.map(f => f.name)
+                            const panel = vscode.window.createWebviewPanel(
+                                "sqlResult",
+                                "SQL Result",
+                                vscode.ViewColumn.One,
+                                {}
+                            )
+                            panel.webview.html = createSqlResultHtml(
+                                result,
+                                columnNames
+                            )
+                            console.log(result)
+                        })
+                        conn.end()
+                    })
+                })
+            }
+        }
+    )
+
     context.subscriptions.push(autocomplete)
+    context.subscriptions.push(executeQuery)
     context.subscriptions.push(setDb)
 }
 
