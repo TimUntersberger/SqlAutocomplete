@@ -61,6 +61,12 @@ function createSqlResultHtml(result, columnNames) {
     `
 }
 
+function addItemsToCompletionList(list, items) {
+    items.forEach(i => {
+        list.push(new vscode.CompletionItem(i))
+    })
+}
+
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
@@ -68,12 +74,6 @@ export function activate(context: vscode.ExtensionContext) {
     // This line of code will only be executed once when your extension is activated
     console.log(
         'Congratulations, your extension "oracle-sql-autocomplete" is now active!'
-    )
-
-    getSqlStatement(
-        `select * from users;
-        select  from users;`,
-        new vscode.Position(1, 7)
     )
 
     const conn = createConnection()
@@ -116,7 +116,7 @@ export function activate(context: vscode.ExtensionContext) {
         })
     })
 
-    const keywords = ["select", "from"]
+    const keywords = ["select", "from", "join", "on", "where"]
 
     const autocomplete = vscode.languages.registerCompletionItemProvider(
         "*",
@@ -126,33 +126,70 @@ export function activate(context: vscode.ExtensionContext) {
                 position: vscode.Position,
                 token: vscode.CancellationToken
             ) {
-                const sqlString = getSqlStatement(document.getText(), position)
-                const sql = parseSql(sqlString)
-                const completionItems: vscode.CompletionItem[] = []
-
-                if (selectedDb != "") {
-                    const tables = databases[selectedDb].tables
-
-                    Object.keys(tables).forEach(tableKey => {
-                        const table = tables[tableKey]
-
-                        completionItems.push(
-                            new vscode.CompletionItem(tableKey)
-                        )
-
-                        Object.keys(table.columns).forEach(columnKey => {
-                            completionItems.push(
-                                new vscode.CompletionItem(
-                                    `${tableKey}.${columnKey}`
-                                )
-                            )
-                        })
-                    })
+                /*TODO: 
+                    somehow find out on which token the cursor is
+                */
+                if (selectedDb == "") {
+                    return
                 }
 
-                keywords.forEach(word =>
-                    completionItems.push(new vscode.CompletionItem(word))
-                )
+                const sqlString = getSqlStatement(document.getText(), position)
+                const statementTokens = parseSql(sqlString)
+                const tables = databases[selectedDb].tables
+                const completionItems: vscode.CompletionItem[] = []
+
+                if (statementTokens) {
+                    if (statementTokens[0] === "select") {
+                        const columns = statementTokens[1]
+                        const table = statementTokens[3]
+                        const joins = statementTokens[4]
+                        const where = statementTokens[5]
+
+                        if (columns == null) {
+                            addItemsToCompletionList(
+                                completionItems,
+                                Object.keys(
+                                    tables[
+                                        typeof table === "object"
+                                            ? table[0]
+                                            : table
+                                    ].columns
+                                )
+                            )
+                        } else if (table == null) {
+                            addItemsToCompletionList(
+                                completionItems,
+                                Object.keys(tables)
+                            )
+                        } else if (joins.length == 0 && where == null) {
+                            addItemsToCompletionList(completionItems, [
+                                "join",
+                                "where"
+                            ])
+                        } else if (joins.length != 0) {
+                            for (const join of joins) {
+                                const joinTable = join[1]
+                                const isOnKeywordPresent = join[2] != null
+                                const joinOn = join[3]
+
+                                if (joinTable == null) {
+                                    addItemsToCompletionList(
+                                        completionItems,
+                                        Object.keys(tables)
+                                    )
+                                } else if (!isOnKeywordPresent) {
+                                    completionItems.push(
+                                        new vscode.CompletionItem("on")
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    addItemsToCompletionList(completionItems, keywords)
+                }
+
+                console.log(statementTokens)
 
                 return completionItems
             }
@@ -174,11 +211,6 @@ export function activate(context: vscode.ExtensionContext) {
             if (selectedItem) selectedDb = selectedItem
         }
     )
-
-    /*TODO: 
-        somehow remove the requirement that you have to select the whole sql statement.
-        maybe just place the cursor inside the statement
-    */
     const executeQuery = vscode.commands.registerCommand(
         "oracle-sql-autocomplete.executeQuery",
         (...args: any[]) => {
@@ -219,7 +251,6 @@ export function activate(context: vscode.ExtensionContext) {
                                 result,
                                 columnNames
                             )
-                            console.log(result)
                         })
                         conn.end()
                     })

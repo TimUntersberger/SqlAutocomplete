@@ -23,6 +23,14 @@
                 "command": "oracle-sql-autocomplete.executeQuery",
                 "title": "Oracle Sql AutoComplete: Execute Query"
             }
+        ],
+        "keybindings": [
+            {
+                "command": "oracle-sql-autocomplete.executeQuery",
+                "key": "alt+enter",
+                "mac": "cmd+enter",
+                "when": "editorTextFocus"
+            }
         ]
     },
     "scripts": {
@@ -41,6 +49,8 @@
     },
     "dependencies": {
         "@types/mysql": "^2.15.5",
-        "mysql": "^2.16.0"
+        "@types/pegjs": "^0.10.1",
+        "mysql": "^2.16.0",
+        "pegjs": "^0.10.0"
     }
 }

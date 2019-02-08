@@ -3,7 +3,7 @@ import * as vscode from "vscode"
 export default function(text: string, position: vscode.Position): string {
     // get current cursor location
     const lines = text.split("\n")
-    let index = position.character
+    let index = position.character - 1
     for (let i = 0; i < position.line; i++) {
         index += lines[i].length
     }
@@ -11,7 +11,7 @@ export default function(text: string, position: vscode.Position): string {
 
     let start = index
 
-    for (; start >= 0; start--) {
+    for (; start > 0; start--) {
         if (text[start] === ";") {
             break
         }
@@ -29,7 +29,7 @@ export default function(text: string, position: vscode.Position): string {
 
     // get sql statement
 
-    const sql = text.substr(start + 1, end - start + 1).trim()
+    const sql = text.substr(start, end - start).trim()
 
     return sql
 }
