@@ -76,9 +76,16 @@ export const peg = `
 
 const parser = pegjs.generate(peg)
 
+function flattenArray(arr, depth = 1) {
+    if (depth === 0) return arr
+
+    return [].concat.apply([], flattenArray(arr, depth - 1))
+}
+
 export default function(sqlString: string): Array<any> | null {
     try {
-        return (<Array<any>>parser.parse(sqlString)).filter(x => x !== "")
+        const tokens: string[] = flattenArray(parser.parse(sqlString), 2)
+        return tokens.filter(x => x !== "").slice(0, tokens.length - 1)
     } catch (e) {
         console.log(e.message)
         return null

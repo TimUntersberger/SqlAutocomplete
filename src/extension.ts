@@ -126,24 +126,40 @@ export function activate(context: vscode.ExtensionContext) {
                 position: vscode.Position,
                 token: vscode.CancellationToken
             ) {
-                /*TODO: 
-                    somehow find out on which token the cursor is
-                */
                 if (selectedDb == "") {
                     return
                 }
 
-                const sqlString = getSqlStatement(document.getText(), position)
-                const statementTokens = parseSql(sqlString)
+                const { sql, cursorPosition } = getSqlStatement(
+                    document.getText(),
+                    position
+                )
+                const tokens = parseSql(sql)
                 const tables = databases[selectedDb].tables
                 const completionItems: vscode.CompletionItem[] = []
 
-                if (statementTokens) {
-                    if (statementTokens[0] === "select") {
-                        const columns = statementTokens[1]
-                        const table = statementTokens[3]
-                        const joins = statementTokens[4]
-                        const where = statementTokens[5]
+                if (tokens) {
+                    const missingTokens: {
+                        previous: string
+                        next: string
+                        index: number
+                    }[] = []
+
+                    for (let i = 0; i < tokens.length; i++) {
+                        if (tokens[i] == null) {
+                            missingTokens.push({
+                                previous: tokens[i - 1],
+                                index: i,
+                                next: tokens[i + 1]
+                            })
+                        }
+                    }
+
+                    if (tokens[0] === "select") {
+                        const columns = tokens[1]
+                        const table = tokens[3]
+                        const joins = tokens[4]
+                        const where = tokens[5]
 
                         if (columns == null) {
                             addItemsToCompletionList(
@@ -189,7 +205,7 @@ export function activate(context: vscode.ExtensionContext) {
                     addItemsToCompletionList(completionItems, keywords)
                 }
 
-                console.log(statementTokens)
+                console.log(tokens)
 
                 return completionItems
             }
