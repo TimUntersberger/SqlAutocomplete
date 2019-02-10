@@ -61,9 +61,13 @@ function createSqlResultHtml(result, columnNames) {
     `
 }
 
-function addItemsToCompletionList(list, items) {
+function addItemsToCompletionList(
+    list,
+    items,
+    kind = vscode.CompletionItemKind.Text
+) {
     items.forEach(i => {
-        list.push(new vscode.CompletionItem(i))
+        list.push(new vscode.CompletionItem(i, kind))
     })
 }
 
@@ -170,18 +174,21 @@ export function activate(context: vscode.ExtensionContext) {
                                             ? table[0]
                                             : table
                                     ].columns
-                                )
+                                ),
+                                vscode.CompletionItemKind.Property
                             )
                         } else if (table == null) {
                             addItemsToCompletionList(
                                 completionItems,
-                                Object.keys(tables)
+                                Object.keys(tables),
+                                vscode.CompletionItemKind.Class
                             )
                         } else if (joins.length == 0 && where == null) {
-                            addItemsToCompletionList(completionItems, [
-                                "join",
-                                "where"
-                            ])
+                            addItemsToCompletionList(
+                                completionItems,
+                                ["join", "where"],
+                                vscode.CompletionItemKind.Keyword
+                            )
                         } else if (joins.length != 0) {
                             for (const join of joins) {
                                 const joinTable = join[1]
@@ -191,18 +198,26 @@ export function activate(context: vscode.ExtensionContext) {
                                 if (joinTable == null) {
                                     addItemsToCompletionList(
                                         completionItems,
-                                        Object.keys(tables)
+                                        Object.keys(tables),
+                                        vscode.CompletionItemKind.Class
                                     )
                                 } else if (!isOnKeywordPresent) {
                                     completionItems.push(
-                                        new vscode.CompletionItem("on")
+                                        new vscode.CompletionItem(
+                                            "on",
+                                            vscode.CompletionItemKind.Keyword
+                                        )
                                     )
                                 }
                             }
                         }
                     }
                 } else {
-                    addItemsToCompletionList(completionItems, keywords)
+                    addItemsToCompletionList(
+                        completionItems,
+                        keywords,
+                        vscode.CompletionItemKind.Keyword
+                    )
                 }
 
                 console.log(tokens)
